@@ -1,3 +1,5 @@
+# non-blocking server using the selectors module in Python.
+
 import socket
 import selectors
 
