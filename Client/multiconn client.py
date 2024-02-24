@@ -92,6 +92,7 @@ def run_multiconn_client():
         for key, mask in events:
             # Only send a message if there are messages in the data.messages list
             if key.data.messages:
+                # key and mask are used to represent information about a file object (such as a socket) and the events that are ready for that file object.
                 service_connection(key, mask)
 
 if __name__ == "__main__":
