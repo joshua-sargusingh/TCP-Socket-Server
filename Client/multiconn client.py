@@ -7,6 +7,8 @@ import types
 #This object will be used for multiplexing I/O events.
 sel = selectors.DefaultSelector()
 
+###
+
 def start_connections(host, port, num_conns):
     server_addr = (host, port)
     for i in range(0, num_conns):
@@ -24,24 +26,27 @@ def start_connections(host, port, num_conns):
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
 
         # After the socket is set up, the data you want to store with the socket is created using SimpleNamespace.
-        # The messages that the client will send to the server are copied using messages.copy() because each connection will call socket.send() and modify the list.
         # Everything needed to keep track of what the client needs to send, has sent, and has received, including the total number of bytes in the messages, is stored in the object data.
         data = types.SimpleNamespace(
             connid = connid,
+            addr=server_addr,  # Include the server address in the data object
             msg_total = 0, # This will be updated based on the length of messages
             recv_total = 0,
             messages = [b"Message 1 from client.", b"Message 2 from client."],
             outb = b"",
+            inb=b"",  # Add this line to define the 'inb' attribute
         )
 
         # Registers the client socket with the selector along with its associated data.
         sel.register(client, events, data=data)
 
+###
+        
 # service_connection is defined to handle read and write events for each registered socket.
 def service_connection(key, mask):
     client = key.fileobj
     data = key.data
-    
+
     try:
         # For read events, it receives data from the socket and prints the received data
         if mask & selectors.EVENT_READ:
@@ -49,12 +54,9 @@ def service_connection(key, mask):
             if recv_data:
                 print(f"Received {recv_data!r} from connection {data.connid}")
                 data.recv_total += len(recv_data)
-            if not recv_data or data.recv_total == data.msg_total:
-                print(f"Closing connection {data.connid}")
-                sel.unregister(client)
-                client.close()
+                data.inb += recv_data
 
-        #For write events, it sends data from the outb buffer to the server.     
+        # For write events, it sends data from the outb buffer to the server.
         if mask & selectors.EVENT_WRITE:
             # This code is checking if the data.outb buffer is empty (not data.outb) and if there are messages in the data.messages list (data.messages).
             # If both conditions are true, it pops the first message from the list and assigns it to the data.outb buffer.
@@ -68,8 +70,16 @@ def service_connection(key, mask):
                     sent = client.send(data.outb)
                     data.outb = data.outb[sent:]
                 except (BlockingIOError, OSError):
-                    # Handle cases where the socket is not yet ready for writing
                     pass
+
+        # Check if all messages have been sent and received
+        if not data.messages and not data.outb and not data.inb and data.recv_total == data.msg_total:
+            print(f"All messages sent and received for connection {data.connid}")
+
+            # Reset counters and buffers for the next set of messages
+            data.msg_total = 0
+            data.recv_total = 0
+            data.inb = b""
 
     except (ConnectionResetError, ConnectionAbortedError):
         # Handle the case where the server has closed the connection
@@ -77,23 +87,25 @@ def service_connection(key, mask):
             print(f"Connection forcibly closed by the remote host {data.addr}")
         else:
             print("Connection forcibly closed by the remote host before 'addr' was set")
+
+        # Unregister the client socket and close it
         sel.unregister(client)
         client.close()
 
+###
+        
 def run_multiconn_client():
     host = "127.0.0.1"
     port = 8080
-    num_connections = 3  # Adjust the number of connections as needed
+    num_connections = 2  # Adjust the number of connections as needed
 
     start_connections(host, port, num_connections)
 
     while True:
         events = sel.select()
         for key, mask in events:
-            # Only send a message if there are messages in the data.messages list
-            if key.data.messages:
-                # key and mask are used to represent information about a file object (such as a socket) and the events that are ready for that file object.
-                service_connection(key, mask)
+            # Handle both read and write events for all connections
+            service_connection(key, mask)
 
 if __name__ == "__main__":
     run_multiconn_client()

@@ -29,43 +29,52 @@ print(f"Listening on {(host, port)}")
 #For the listening socket, you want read events: selectors.EVENT_READ.
 sel.register(server, selectors.EVENT_READ, data=None)
 
+###
+
 def accept_connection(server_socket):
     client_socket, addr = server_socket.accept()
     print(f"Accepted connection from {addr}")
     client_socket.setblocking(False)
-    # Creates an instance of class types.SimpleNamespace class, initializing it with attributes addr, inb, and outb
+    # Creates an instance of the types.SimpleNamespace class, initializing it with attributes addr, inb, and outb
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
     # Register the new client socket for READ and WRITE events
     events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    sel.register(client_socket, events, data=data)
+    sel.register(client_socket, events, data=data)    
+
+###
 
 def handle_data(key, mask):
     client_socket = key.fileobj
     data = key.data
-    if mask & selectors.EVENT_READ:
-        # Should be ready to read
-        recv_data = client_socket.recv(1024)
-        if recv_data:
-            print(f"Received from connection {data.addr}: {recv_data.decode('utf-8')}")
-            data.outb += recv_data
-        else:
-            # If no data is received, this means that the client has closed their socket, so the server should too.
-            print(f"Closing connection to {data.addr}")
-            sel.unregister(client_socket)
-            client_socket.close()
-    if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            print(f"Echoing {data.outb!r} to {data.addr}")
-            # any received data stored in data.outb is echoed to the client using sock.send().
-            sent = client_socket.send(data.outb)
-            # The expression data.outb[sent:] is used to get the remaining data in the outb buffer that still needs to be sent. 
-            data.outb = data.outb[sent:]
-            
-        # Check if all messages have been sent and received, then close the connection
-        if not data.outb:
-            print(f"All messages sent and received, closing connection to {data.addr}")
-            sel.unregister(client_socket)
-            client_socket.close()
+
+    try:
+        if mask & selectors.EVENT_READ:
+            # Read data from the client
+            recv_data = client_socket.recv(1024)
+            if recv_data:
+                print(f"Received from connection {data.addr}: {recv_data.decode('utf-8')}")
+                data.outb += recv_data
+
+        if mask & selectors.EVENT_WRITE:
+            # Write data back to the client
+            if data.outb:
+                print(f"Echoing {data.outb!r} to {data.addr}")
+                sent = client_socket.send(data.outb)
+                data.outb = data.outb[sent:]
+
+                # Check if all messages have been sent and received, then close the connection
+                if not data.outb and b"Message 2 from client." in data.inb:
+                    print(f"All messages sent and received, closing connection to {data.addr}")
+                    sel.unregister(client_socket)
+                    client_socket.close()
+
+    except (ConnectionResetError, ConnectionAbortedError):
+        print(f"Connection forcibly closed by the client {data.addr}")
+        sel.unregister(client_socket)
+        client_socket.close()
+
+###
+
 try:
     while True:
         #sel.select(timeout=None) waits until some registered file objects become ready, or the timeout expires 
@@ -73,6 +82,7 @@ try:
         #If timeout <= 0, the call won’t block, and will report the currently ready file objects.
         #If timeout is None, the call will block until a monitored file object becomes ready.
         #It returns a list of tuples (key and masks), one for each socket.
+        # key and mask are used to represent information about a file object (such as a socket) and the events that are ready for that file object.
         events = sel.select(timeout=None)
 
         #The key object represents a file object (such as a socket) that is ready for a specified event (or multiple events).
