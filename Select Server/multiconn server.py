@@ -60,7 +60,12 @@ def handle_data(key, mask):
             sent = client_socket.send(data.outb)
             # The expression data.outb[sent:] is used to get the remaining data in the outb buffer that still needs to be sent. 
             data.outb = data.outb[sent:]
-
+            
+        # Check if all messages have been sent and received, then close the connection
+        if not data.outb:
+            print(f"All messages sent and received, closing connection to {data.addr}")
+            sel.unregister(client_socket)
+            client_socket.close()
 try:
     while True:
         #sel.select(timeout=None) waits until some registered file objects become ready, or the timeout expires 
