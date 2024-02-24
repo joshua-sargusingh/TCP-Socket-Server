@@ -1,4 +1,5 @@
-import sys
+# multiconn-server.py
+
 import socket
 import selectors
 import types
@@ -13,10 +14,6 @@ host = '127.0.0.1'
 port = 8080
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((host, port))
-server.listen()
-print(f"Listening on {(host, port)}")
-
 #A socket function or method that temporarily suspends your application is a blocking call.
 #For example, .accept(), .connect(), .send(), and .recv() block, meaning they don’t return immediately.
 #Blocking calls have to wait on system calls (I/O) to complete before they can return a value.
@@ -24,6 +21,9 @@ print(f"Listening on {(host, port)}")
 #Blocking socket calls can be set to non-blocking mode so they return immediately.
 #If you do this, then you’ll need to redesign your application to handle the socket operation when it’s ready.
 server.setblocking(False)
+server.bind((host, port))
+server.listen()
+print(f"Listening on {(host, port)}")
 
 #sel.register() registers the socket to be monitored for I/O events using sel.select()
 #For the listening socket, you want read events: selectors.EVENT_READ.
@@ -33,21 +33,33 @@ def accept_connection(server_socket):
     client_socket, addr = server_socket.accept()
     print(f"Accepted connection from {addr}")
     client_socket.setblocking(False)
-    # Register the new client socket for READ events
-    events = selectors.EVENT_READ
-    sel.register(client_socket, events, data=b"")
+    # Creates an instance of class types.SimpleNamespace class, initializing it with attributes addr, inb, and outb
+    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
+    # Register the new client socket for READ and WRITE events
+    events = selectors.EVENT_READ | selectors.EVENT_WRITE
+    sel.register(client_socket, events, data=data)
 
 def handle_data(key, mask):
     client_socket = key.fileobj
-    data = client_socket.recv(1024)
-    if data:
-        # Process the received data
-        print(f"Received data from {key.fileobj.getpeername()}: {data.decode('utf-8')}")
-    else:
-        # If no data is received, close the connection
-        print(f"Connection closed by {key.fileobj.getpeername()}")
-        sel.unregister(client_socket)
-        client_socket.close()
+    data = key.data
+    if mask & selectors.EVENT_READ:
+        # Should be ready to read
+        recv_data = client_socket.recv(1024)
+        if recv_data:
+            print(f"Received {recv_data!r} from connection {data.addr}")
+            data.outb += recv_data
+        else:
+            # If no data is received, this means that the client has closed their socket, so the server should too.
+            print(f"Closing connection to {data.addr}")
+            sel.unregister(client_socket)
+            client_socket.close()
+    if mask & selectors.EVENT_WRITE:
+        if data.outb:
+            print(f"Echoing {data.outb!r} to {data.addr}")
+            # any received data stored in data.outb is echoed to the client using sock.send().
+            sent = client_socket.send(data.outb)
+            # The expression data.outb[sent:] is used to get the remaining data in the outb buffer that still needs to be sent. 
+            data.outb = data.outb[sent:]
 
 try:
     while True:
