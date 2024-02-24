@@ -73,7 +73,7 @@ def service_connection(key, mask):
 
 def run_multiconn_client():
     host = "127.0.0.1"
-    port = 8000
+    port = 8080
     num_connections = 3  # Adjust the number of connections as needed
 
     start_connections(host, port, num_connections)

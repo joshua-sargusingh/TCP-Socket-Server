@@ -46,7 +46,7 @@ def handle_data(key, mask):
         # Should be ready to read
         recv_data = client_socket.recv(1024)
         if recv_data:
-            print(f"Received {recv_data!r} from connection {data.addr}")
+            print(f"Received from connection {data.addr}: {recv_data.decode('utf-8')}")
             data.outb += recv_data
         else:
             # If no data is received, this means that the client has closed their socket, so the server should too.
